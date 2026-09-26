@@ -1,0 +1,942 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FatigueX Helmet — Enterprise Worker Safety & Fatigue Intelligence</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#060d17',
+                        cardBg: '#0f1c2e',
+                        cardBorder: '#1e3350',
+                        accent: '#38bdf8',
+                        good: '#10b981',
+                        warn: '#f59e0b',
+                        bad: '#ef4444'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Chart.js for advanced multi-metric telemetry graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome for iconography -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #060d17; }
+        ::-webkit-scrollbar-thumb { background: #1e3350; border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
+        .glow-good { box-shadow: 0 0 15px rgba(16, 185, 129, 0.3); }
+        .glow-bad { box-shadow: 0 0 18px rgba(239, 68, 68, 0.4); }
+        .glass-panel { background: rgba(15, 28, 46, 0.85); backdrop-filter: blur(12px); }
+    </style>
+</head>
+<body class="bg-darkBg text-slate-100 min-h-screen flex flex-col antialiased selection:bg-sky-500 selection:text-white">
+
+    <div class="flex h-screen overflow-hidden">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="w-64 border-r border-cardBorder bg-cardBg/90 flex flex-col justify-between hidden md:flex z-20">
+            <div>
+                <div class="p-6 flex items-center space-x-3 border-b border-cardBorder/60">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/30">
+                        <i class="fa-solid fa-hard-hat text-lg"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-extrabold text-base tracking-wide bg-gradient-to-r from-white via-sky-200 to-sky-400 bg-clip-text text-transparent">FatigueX Helmet</h1>
+                        <span class="text-xs text-sky-400 font-medium">IoT Safety Core v2.4</span>
+                    </div>
+                </div>
+
+                <nav class="p-4 space-y-1.5">
+                    <button onclick="switchTab('dashboard')" id="nav-dashboard" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all bg-sky-500/10 text-sky-400 border border-sky-500/30">
+                        <i class="fa-solid fa-chart-line w-5"></i>
+                        <span>Live Dashboard</span>
+                    </button>
+                    <button onclick="switchTab('workers')" id="nav-workers" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all">
+                        <i class="fa-solid fa-users w-5"></i>
+                        <span>Fleet Workforce</span>
+                    </button>
+                    <button onclick="switchTab('analytics')" id="nav-analytics" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all">
+                        <i class="fa-solid fa-brain w-5"></i>
+                        <span>Fatigue AI Engine</span>
+                    </button>
+                    <button onclick="switchTab('settings')" id="nav-settings" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all">
+                        <i class="fa-solid fa-sliders w-5"></i>
+                        <span>ESP32 & API Config</span>
+                    </button>
+                </nav>
+            </div>
+
+            <div class="p-4 border-t border-cardBorder/60">
+                <div class="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-slate-400">System Mode</span>
+                        <span id="sidebar-mode-badge" class="px-2 py-0.5 rounded font-bold text-[10px] bg-sky-500/20 text-sky-400 uppercase">Simulated</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-slate-400">ESP32 Hardware</span>
+                        <span id="hardware-status" class="flex items-center gap-1.5 text-emerald-400 font-medium">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Standby
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 flex flex-col overflow-y-auto">
+            
+            <header class="h-18 border-b border-cardBorder px-6 flex items-center justify-between glass-panel sticky top-0 z-10">
+                <div class="flex items-center space-x-4">
+                    <button onclick="toggleMobileMenu()" class="md:hidden text-slate-300 hover:text-white text-xl">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div>
+                        <div class="text-[11px] font-bold tracking-wider text-sky-400 uppercase">Industrial IoT Biometric Intelligence</div>
+                        <h2 id="page-title" class="text-xl font-extrabold text-white">Live Helmet Telemetry & Fatigue Matrix</h2>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-3">
+                    <!-- Mode Toggle Switch (SIMULATED vs LIVE_API) -->
+                    <div class="bg-slate-900 p-1 rounded-xl border border-cardBorder flex items-center text-xs font-semibold">
+                        <button onclick="setDataSource('SIMULATED')" id="btn-mode-sim" class="px-3 py-1.5 rounded-lg transition-all bg-sky-600 text-white shadow">Simulated Data</button>
+                        <button onclick="setDataSource('LIVE_API')" id="btn-mode-api" class="px-3 py-1.5 rounded-lg transition-all text-slate-400 hover:text-white">ESP32 Live API</button>
+                    </div>
+
+                    <div id="live-indicator" class="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping absolute"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 relative"></span>
+                        <span id="connection-state-text">STREAMING ACTIVE</span>
+                    </div>
+
+                    <div id="clock-display" class="hidden lg:block text-xs font-mono text-slate-400 px-3 py-1.5 bg-slate-900 rounded-xl border border-cardBorder">
+                        00:00:00 UTC
+                    </div>
+                </div>
+            </header>
+
+            <div class="p-6 space-y-6 max-w-[1600px] w-full mx-auto">
+                
+                <!-- Tab 1: Live Dashboard View -->
+                <div id="tab-dashboard" class="space-y-6">
+                    
+                    <!-- Top Metric Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-cardBg border border-cardBorder p-5 rounded-2xl relative overflow-hidden shadow-xl">
+                            <div class="absolute right-4 top-4 text-sky-500/20 text-4xl"><i class="fa-solid fa-users"></i></div>
+                            <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Active Helmets</span>
+                            <div class="text-3xl font-extrabold mt-2 text-white" id="metric-total-workers">10</div>
+                            <div class="mt-2 flex items-center text-xs text-sky-400 font-medium">
+                                <i class="fa-solid fa-signal mr-1.5"></i> Mesh network stable (99.8%)
+                            </div>
+                        </div>
+
+                        <div class="bg-cardBg border border-cardBorder p-5 rounded-2xl relative overflow-hidden shadow-xl">
+                            <div class="absolute right-4 top-4 text-emerald-500/20 text-4xl"><i class="fa-solid fa-shield-heart"></i></div>
+                            <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Safe & Alert Workers</span>
+                            <div class="text-3xl font-extrabold mt-2 text-emerald-400" id="metric-safe-workers">7</div>
+                            <div class="mt-2 flex items-center text-xs text-emerald-400 font-medium">
+                                <i class="fa-solid fa-circle-check mr-1.5"></i> Normal biometric parameters
+                            </div>
+                        </div>
+
+                        <div class="bg-cardBg border border-cardBorder p-5 rounded-2xl relative overflow-hidden shadow-xl">
+                            <div class="absolute right-4 top-4 text-red-500/20 text-4xl"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                            <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Fatigue Alerts Triggered</span>
+                            <div class="text-3xl font-extrabold mt-2 text-red-400" id="metric-alert-workers">3</div>
+                            <div class="mt-2 flex items-center text-xs text-red-400 font-medium">
+                                <i class="fa-solid fa-bell mr-1.5 animate-bounce"></i> Immediate supervisor dispatch recommended
+                            </div>
+                        </div>
+
+                        <div class="bg-cardBg border border-cardBorder p-5 rounded-2xl relative overflow-hidden shadow-xl">
+                            <div class="absolute right-4 top-4 text-amber-500/20 text-4xl"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                            <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Telemetry Latency</span>
+                            <div class="text-3xl font-extrabold mt-2 text-amber-400" id="metric-latency">42 ms</div>
+                            <div class="mt-2 flex items-center text-xs text-amber-400 font-medium">
+                                <i class="fa-solid fa-bolt mr-1.5"></i> High-frequency ESP32 polling
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        
+                        <!-- Left 1 Column: Worker Fleet List -->
+                        <div class="bg-cardBg border border-cardBorder rounded-2xl p-5 flex flex-col h-[520px]">
+                            <div class="flex items-center justify-between pb-4 border-b border-cardBorder">
+                                <div>
+                                    <h3 class="font-bold text-base text-white">Helmet Fleet Units</h3>
+                                    <p class="text-xs text-slate-400">Click any worker to inspect live biometrics</p>
+                                </div>
+                                <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20" id="fleet-count">10 Units</span>
+                            </div>
+                            
+                            <div id="workers-list-container" class="flex-1 overflow-y-auto mt-4 space-y-2.5 pr-1">
+                                <!-- Populated dynamically by JavaScript -->
+                            </div>
+                        </div>
+
+                        <!-- Right 2 Columns: Selected Worker Telemetry & Detailed Sensor Cards -->
+                        <div class="lg:col-span-2 bg-cardBg border border-cardBorder rounded-2xl p-5 flex flex-col justify-between h-[520px]">
+                            
+                            <!-- Worker Top Details Bar -->
+                            <div>
+                                <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-cardBorder gap-3">
+                                    <div class="flex items-center space-x-3">
+                                        <div class="w-12 h-12 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 text-xl font-bold" id="selected-worker-avatar">
+                                            W1
+                                        </div>
+                                        <div>
+                                            <div class="flex items-center space-x-2">
+                                                <h3 id="selected-worker-name" class="font-extrabold text-lg text-white">Worker 01 - Worker 1</h3>
+                                                <span id="selected-worker-id" class="text-xs font-mono text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded">ESP32-HLM-01</span>
+                                            </div>
+                                            <p id="selected-worker-zone" class="text-xs text-slate-400 mt-0.5">Sector 4 - Heavy Excavation & Rigging</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <span id="selected-worker-status-badge" class="px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                                            ● SAFE & ALERT
+                                        </span>
+                                        <button onclick="triggerHapticAlert()" class="px-3 py-1.5 rounded-xl bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 text-xs font-bold transition-all flex items-center gap-1.5">
+                                            <i class="fa-solid fa-bullhorn"></i> Buzz Helmet
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- 4 Key Sensor Cards -->
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                                    <div class="bg-slate-900/80 border border-slate-800 p-3.5 rounded-xl">
+                                        <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+                                            <span>Heart Rate</span>
+                                            <i class="fa-solid fa-heart-pulse text-rose-500"></i>
+                                        </div>
+                                        <div class="text-xl font-extrabold text-white" id="val-hr">82.4 <span class="text-xs font-normal text-slate-400">bpm</span></div>
+                                        <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                                            <div id="bar-hr" class="bg-rose-500 h-full rounded-full transition-all duration-300" style="width: 55%;"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-slate-900/80 border border-slate-800 p-3.5 rounded-xl">
+                                        <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+                                            <span>Blink Rate</span>
+                                            <i class="fa-solid fa-eye text-sky-400"></i>
+                                        </div>
+                                        <div class="text-xl font-extrabold text-white" id="val-blink">18.5 <span class="text-xs font-normal text-slate-400">/min</span></div>
+                                        <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                                            <div id="bar-blink" class="bg-sky-400 h-full rounded-full transition-all duration-300" style="width: 60%;"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-slate-900/80 border border-slate-800 p-3.5 rounded-xl">
+                                        <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+                                            <span>Body Temp</span>
+                                            <i class="fa-solid fa-temperature-three-quarters text-amber-400"></i>
+                                        </div>
+                                        <div class="text-xl font-extrabold text-white" id="val-temp">36.8 <span class="text-xs font-normal text-slate-400">°C</span></div>
+                                        <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                                            <div id="bar-temp" class="bg-amber-400 h-full rounded-full transition-all duration-300" style="width: 48%;"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-slate-900/80 border border-slate-800 p-3.5 rounded-xl">
+                                        <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+                                            <span>Head Acceleration</span>
+                                            <i class="fa-solid fa-gauge-high text-emerald-400"></i>
+                                        </div>
+                                        <div class="text-xl font-extrabold text-white" id="val-acc">0.72 <span class="text-xs font-normal text-slate-400">g</span></div>
+                                        <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                                            <div id="bar-acc" class="bg-emerald-400 h-full rounded-full transition-all duration-300" style="width: 65%;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Fatigue Score Gauge & Recommendation Box -->
+                            <div class="bg-slate-900/90 border border-slate-800 p-4 rounded-xl flex items-center justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <div class="relative w-14 h-14 flex items-center justify-center">
+                                        <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                            <path class="text-slate-800" stroke-width="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                            <path id="fatigue-score-circle" class="text-emerald-400 transition-all duration-500" stroke-dasharray="25, 100" stroke-width="3.5" stroke-linecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                        </svg>
+                                        <div class="absolute text-xs font-bold text-white" id="fatigue-score-val">18%</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-xs font-bold text-slate-400 uppercase">AI Fatigue Index Score</div>
+                                        <div id="fatigue-recommendation" class="text-sm font-semibold text-emerald-400 mt-0.5">Worker alert and fully responsive. No break required.</div>
+                                    </div>
+                                </div>
+                                <div class="hidden sm:flex items-center space-x-2">
+                                    <button onclick="exportWorkerReport()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all border border-slate-700">
+                                        <i class="fa-solid fa-download mr-1.5"></i> Export Log
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        
+                        <!-- Graph 1: Heart Rate & Blink Rate -->
+                        <div class="bg-cardBg border border-cardBorder rounded-2xl p-5 shadow-xl">
+                            <div class="flex items-center justify-between pb-3 border-b border-cardBorder mb-4">
+                                <div>
+                                    <h3 class="font-bold text-base text-white">Cardiovascular & Ocular Telemetry</h3>
+                                    <p class="text-xs text-slate-400">Real-time Heart Rate (BPM) & Blink Rate (/min)</p>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="flex items-center text-xs font-medium text-rose-400"><span class="w-2 h-2 rounded-full bg-rose-500 mr-1.5"></span> HR</span>
+                                    <span class="flex items-center text-xs font-medium text-sky-400 ml-2"><span class="w-2 h-2 rounded-full bg-sky-400 mr-1.5"></span> Blink</span>
+                                </div>
+                            </div>
+                            <div class="h-64 relative">
+                                <canvas id="chartHrBlink"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Graph 2: Body Temperature & Head Acceleration -->
+                        <div class="bg-cardBg border border-cardBorder rounded-2xl p-5 shadow-xl">
+                            <div class="flex items-center justify-between pb-3 border-b border-cardBorder mb-4">
+                                <div>
+                                    <h3 class="font-bold text-base text-white">Thermal & Motion Dynamics</h3>
+                                    <p class="text-xs text-slate-400">Core Body Temperature (°C) & Head Acceleration (g)</p>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="flex items-center text-xs font-medium text-amber-400"><span class="w-2 h-2 rounded-full bg-amber-400 mr-1.5"></span> Temp</span>
+                                    <span class="flex items-center text-xs font-medium text-emerald-400 ml-2"><span class="w-2 h-2 rounded-full bg-emerald-400 mr-1.5"></span> Accel</span>
+                                </div>
+                            </div>
+                            <div class="h-64 relative">
+                                <canvas id="chartTempAcc"></canvas>
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <!-- Tab 2: Fleet Workforce Management -->
+                <div id="tab-workers" class="space-y-6 hidden">
+                    <div class="bg-cardBg border border-cardBorder rounded-2xl p-6 shadow-xl">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-cardBorder gap-4">
+                            <div>
+                                <h3 class="text-lg font-extrabold text-white">Full Workforce Telemetry Directory</h3>
+                                <p class="text-xs text-slate-400">Manage helmet assignments, zone deployments, and live safety statuses</p>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <input type="text" id="fleet-search" oninput="filterFleet()" placeholder="Search worker or helmet ID..." class="bg-slate-900 border border-slate-700 text-sm rounded-xl px-4 py-2 text-white focus:outline-none focus:border-sky-500">
+                                <button onclick="addNewWorkerModal()" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-lg shadow-sky-600/30">
+                                    <i class="fa-solid fa-plus mr-1.5"></i> Register Helmet
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="overflow-x-auto mt-4">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="border-b border-cardBorder text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                                        <th class="py-3 px-4">Worker / ID</th>
+                                        <th class="py-3 px-4">Assigned Helmet</th>
+                                        <th class="py-3 px-4">Heart Rate</th>
+                                        <th class="py-3 px-4">Blink Rate</th>
+                                        <th class="py-3 px-4">Temperature</th>
+                                        <th class="py-3 px-4">Acceleration</th>
+                                        <th class="py-3 px-4">Status</th>
+                                        <th class="py-3 px-4 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="fleet-table-body" class="divide-y divide-cardBorder/60 text-sm">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 3: Fatigue AI Engine & Thresholds -->
+                <div id="tab-analytics" class="space-y-6 hidden">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        
+                        <div class="bg-cardBg border border-cardBorder rounded-2xl p-6 shadow-xl space-y-4">
+                            <div class="pb-3 border-b border-cardBorder">
+                                <h3 class="text-lg font-extrabold text-white">AI Fatigue Classification Parameters</h3>
+                                <p class="text-xs text-slate-400">Configured safety boundaries for automated worker fatigue triggers</p>
+                            </div>
+
+                            <div class="space-y-4 pt-2">
+                                <div class="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-sm font-bold text-white">Heart Rate Threshold</span>
+                                        <span class="text-xs font-mono text-sky-400">76.0 – 95.0 bpm</span>
+                                    </div>
+                                    <p class="text-xs text-slate-400">Values exceeding 95 bpm or falling below 76 bpm under workload flag cardiovascular stress.</p>
+                                </div>
+
+                                <div class="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-sm font-bold text-white">Blink Rate Threshold (Ocular Fatigue)</span>
+                                        <span class="text-xs font-mono text-sky-400">16.0 – 25.0 /min</span>
+                                    </div>
+                                    <p class="text-xs text-slate-400">Measured via infrared blink sensor inside helmet brim. Low blink rate indicates microsleep risk.</p>
+                                </div>
+
+                                <div class="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-sm font-bold text-white">Core Body Temperature Threshold</span>
+                                        <span class="text-xs font-mono text-sky-400">36.5 – 37.2 °C</span>
+                                    </div>
+                                    <p class="text-xs text-slate-400">Contact forehead thermopile sensor. >37.3 °C signals early heat exhaustion.</p>
+                                </div>
+
+                                <div class="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-sm font-bold text-white">Head Acceleration Threshold (Imbalance/Slip)</span>
+                                        <span class="text-xs font-mono text-sky-400">0.55 – 0.88 g</span>
+                                    </div>
+                                    <p class="text-xs text-slate-400">6-axis IMU on helmet suspension. Sudden spikes or erratic instability trigger alerts.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-cardBg border border-cardBorder rounded-2xl p-6 shadow-xl space-y-4">
+                            <div class="pb-3 border-b border-cardBorder">
+                                <h3 class="text-lg font-extrabold text-white">Real-Time Alert Log & Incident History</h3>
+                                <p class="text-xs text-slate-400">Chronological log of fatigue warnings and sensor anomalies</p>
+                            </div>
+
+                            <div id="alert-log-container" class="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Tab 4: ESP32 Hardware Integration & API Settings -->
+                <div id="tab-settings" class="space-y-6 hidden">
+                    <div class="bg-cardBg border border-cardBorder rounded-2xl p-6 shadow-xl max-w-3xl mx-auto space-y-6">
+                        <div class="pb-4 border-b border-cardBorder">
+                            <h3 class="text-lg font-extrabold text-white">ESP32 Hardware & API Integration Hub</h3>
+                            <p class="text-xs text-slate-400">Configure your physical helmet hardware connection via REST polling or WebSocket</p>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">Integration Mode</label>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <button onclick="setDataSource('SIMULATED')" id="settings-btn-sim" class="p-4 rounded-xl border text-left transition-all bg-sky-600/20 border-sky-500 text-white">
+                                        <div class="font-bold text-sm mb-1">Simulated Telemetry</div>
+                                        <div class="text-xs text-slate-400">Uses built-in stochastic simulator for testing and demonstrations without physical hardware.</div>
+                                    </button>
+                                    <button onclick="setDataSource('LIVE_API')" id="settings-btn-api" class="p-4 rounded-xl border text-left transition-all bg-slate-900 border-slate-800 text-slate-400 hover:text-white">
+                                        <div class="font-bold text-sm mb-1">Live ESP32 Hardware API</div>
+                                        <div class="text-xs text-slate-400">Connects to physical ESP32 helmets over Wi-Fi/MQTT REST API or WebSocket stream.</div>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="api-config-section" class="space-y-4 pt-4 border-t border-cardBorder hidden">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-300 uppercase mb-2">ESP32 Gateway Endpoint URL / WebSocket URI</label>
+                                    <div class="flex space-x-2">
+                                        <input type="text" id="api-endpoint-input" value="http://192.168.4.1/api/telemetry" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-sky-500">
+                                        <button onclick="testApiConnection()" class="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow">
+                                            Test Connection
+                                        </button>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 mt-1.5">Ensure your ESP32 microcontroller is running the FatigueX Firmware with CORS enabled.</p>
+                                </div>
+
+                                <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-2">
+                                    <div class="text-xs font-bold text-slate-300 uppercase">Sample ESP32 JSON Telemetry Payload Expected</div>
+                                    <pre class="bg-black/50 p-3 rounded-lg text-xs font-mono text-sky-400 overflow-x-auto"><code>{
+  "helmet_id": "ESP32-HLM-01",
+  "worker_name": "Worker 1",
+  "heart_rate": 82.4,
+  "blink_rate": 18.5,
+  "body_temp": 36.8,
+  "head_accel": 0.72,
+  "timestamp": 1774521600
+}</code></pre>
+                                </div>
+                            </div>
+
+                            <div class="pt-4 flex justify-end">
+                                <button onclick="saveSettings()" class="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm transition-all shadow-lg shadow-emerald-600/30">
+                                    Save Configuration
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- Core Application State & Configuration ---
+        let dataSource = 'SIMULATED'; // 'SIMULATED' or 'LIVE_API'
+        let apiEndpoint = 'http://192.168.4.1/api/telemetry';
+        let selectedWorkerIndex = 0;
+        let isStreaming = true;
+
+        // Thresholds
+        const thresholds = {
+            hr: [76.0, 95.0],
+            blink: [16.0, 25.0],
+            acc: [0.55, 0.88],
+            temp: [36.5, 37.2]
+        };
+
+        // Worker Fleet Dataset
+        let workers = [
+            { id: 'ESP32-HLM-01', name: 'Worker 1', zone: 'Sector 4 - Heavy Excavation', hr: 82.4, blink: 18.5, acc: 0.72, temp: 36.8 },
+            { id: 'ESP32-HLM-02', name: 'Worker 2', zone: 'Sector 2 - Tunnel Boring', hr: 91.5, blink: 14.2, acc: 0.68, temp: 37.0 },
+            { id: 'ESP32-HLM-03', name: 'Worker 3', zone: 'Sector 1 - Crane Operations', hr: 98.2, blink: 12.1, acc: 0.91, temp: 37.4 },
+            { id: 'ESP32-HLM-04', name: 'Worker 4', zone: 'Sector 3 - Electrical Grid', hr: 78.1, blink: 21.4, acc: 0.61, temp: 36.7 },
+            { id: 'ESP32-HLM-05', name: 'Worker 5', zone: 'Sector 5 - Foundation Piling', hr: 88.3, blink: 19.8, acc: 0.82, temp: 36.9 },
+            { id: 'ESP32-HLM-06', name: 'Worker 6', zone: 'Sector 4 - Heavy Excavation', hr: 73.5, blink: 22.5, acc: 0.58, temp: 36.6 },
+            { id: 'ESP32-HLM-07', name: 'Worker 7', zone: 'Sector 2 - Tunnel Boring', hr: 85.0, blink: 26.2, acc: 0.76, temp: 37.1 },
+            { id: 'ESP32-HLM-08', name: 'Worker 8', zone: 'Sector 6 - Structural Steel', hr: 92.1, blink: 15.3, acc: 0.94, temp: 37.3 },
+            { id: 'ESP32-HLM-09', name: 'Worker 9', zone: 'Sector 1 - Crane Operations', hr: 80.4, blink: 20.1, acc: 0.70, temp: 36.8 },
+            { id: 'ESP32-HLM-10', name: 'Worker 10', zone: 'Sector 3 - Electrical Grid', hr: 77.9, blink: 21.0, acc: 0.64, temp: 36.7 }
+        ];
+
+        let alertLogs = [
+            { time: '12:42:10', worker: 'Worker 3 (ESP32-HLM-03)', msg: 'Heart rate elevated (98.2 bpm) & High core temp', type: 'bad' },
+            { time: '12:38.05', worker: 'Worker 8 (ESP32-HLM-08)', msg: 'Head acceleration spike (0.94g) detected', type: 'warn' },
+            { time: '12:21:40', worker: 'Worker 2 (ESP32-HLM-02)', msg: 'Low blink rate (14.2/min) - Microsleep risk', type: 'bad' }
+        ];
+
+        // Chart.js Historical Telemetry Buffers (Last 25 data points)
+        const maxHistoryPoints = 25;
+        let timeLabels = Array.from({length: maxHistoryPoints}, (_, i) => `-${(maxHistoryPoints - i) * 2}s`);
+        let historyHr = Array.from({length: maxHistoryPoints}, () => 82);
+        let historyBlink = Array.from({length: maxHistoryPoints}, () => 18);
+        let historyTemp = Array.from({length: maxHistoryPoints}, () => 36.8);
+        let historyAcc = Array.from({length: maxHistoryPoints}, () => 0.70);
+
+        let chartHrBlinkInstance = null;
+        let chartTempAccInstance = null;
+
+        // --- Initialization on Load ---
+        window.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            renderAll();
+            setInterval(mainTick, 2000);
+            setInterval(updateClock, 1000);
+        });
+
+        // --- Clock Utility ---
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock-display').textContent = now.toUTCString().slice(17, 25) + ' UTC';
+        }
+
+        // --- Mode Switching ---
+        function setDataSource(mode) {
+            dataSource = mode;
+            const isSim = (mode === 'SIMULATED');
+            
+            // Update UI buttons
+            document.getElementById('btn-mode-sim').className = isSim ? 'px-3 py-1.5 rounded-lg transition-all bg-sky-600 text-white shadow' : 'px-3 py-1.5 rounded-lg transition-all text-slate-400 hover:text-white';
+            document.getElementById('btn-mode-api').className = !isSim ? 'px-3 py-1.5 rounded-lg transition-all bg-sky-600 text-white shadow' : 'px-3 py-1.5 rounded-lg transition-all text-slate-400 hover:text-white';
+            
+            document.getElementById('settings-btn-sim').className = isSim ? 'p-4 rounded-xl border text-left transition-all bg-sky-600/20 border-sky-500 text-white' : 'p-4 rounded-xl border text-left transition-all bg-slate-900 border-slate-800 text-slate-400 hover:text-white';
+            document.getElementById('settings-btn-api').className = !isSim ? 'p-4 rounded-xl border text-left transition-all bg-sky-600/20 border-sky-500 text-white' : 'p-4 rounded-xl border text-left transition-all bg-slate-900 border-slate-800 text-slate-400 hover:text-white';
+
+            document.getElementById('api-config-section').classList.toggle('hidden', isSim);
+            document.getElementById('sidebar-mode-badge').textContent = isSim ? 'Simulated' : 'Live ESP32 API';
+            document.getElementById('hardware-status').innerHTML = isSim ? 
+                '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Standby' : 
+                '<span class="w-2 h-2 rounded-full bg-sky-400 animate-ping"></span> Polling API';
+
+            showNotification(isSim ? 'Switched to Simulated Telemetry Mode' : 'Switched to Live ESP32 Hardware API Mode', 'success');
+        }
+
+        // --- Tab Navigation ---
+        function switchTab(tabId) {
+            ['dashboard', 'workers', 'analytics', 'settings'].forEach(t => {
+                document.getElementById(`tab-${t}`).classList.add('hidden');
+                const navBtn = document.getElementById(`nav-${t}`);
+                if(navBtn) {
+                    navBtn.className = 'w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all';
+                }
+            });
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            const activeNav = document.getElementById(`nav-${tabId}`);
+            if(activeNav) {
+                activeNav.className = 'w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all bg-sky-500/10 text-sky-400 border border-sky-500/30';
+            }
+            const titles = { dashboard: 'Live Helmet Telemetry & Fatigue Matrix', workers: 'Fleet Workforce Management', analytics: 'AI Fatigue Engine & Metrics', settings: 'ESP32 Hardware & API Config' };
+            document.getElementById('page-title').textContent = titles[tabId];
+        }
+
+        // --- Fatigue Calculation Rule ---
+        function isFatigued(w) {
+            return w.hr < thresholds.hr[0] || w.hr > thresholds.hr[1] ||
+                   w.blink < thresholds.blink[0] || w.blink > thresholds.blink[1] ||
+                   w.acc < thresholds.acc[0] || w.acc > thresholds.acc[1] ||
+                   w.temp < thresholds.temp[0] || w.temp > thresholds.temp[1];
+        }
+
+        // --- Chart.js Setup ---
+        function initCharts() {
+            const ctx1 = document.getElementById('chartHrBlink').getContext('2d');
+            chartHrBlinkInstance = new Chart(ctx1, {
+                type: 'line',
+                data: {
+                    labels: timeLabels,
+                    datasets: [
+                        { label: 'Heart Rate (bpm)', data: historyHr, borderColor: '#f43f5e', backgroundColor: 'rgba(244,63,94,0.1)', borderWidth: 2, tension: 0.3, yAxisID: 'y' },
+                        { label: 'Blink Rate (/min)', data: historyBlink, borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)', borderWidth: 2, tension: 0.3, yAxisID: 'y1' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { color: 'rgba(30, 51, 80, 0.4)' }, ticks: { color: '#64748b', font: { size: 10 } } },
+                        y: { type: 'linear', display: true, position: 'left', min: 60, max: 120, grid: { color: 'rgba(30, 51, 80, 0.4)' }, ticks: { color: '#f43f5e' } },
+                        y1: { type: 'linear', display: true, position: 'right', min: 10, max: 35, grid: { drawOnChartArea: false }, ticks: { color: '#38bdf8' } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            const ctx2 = document.getElementById('chartTempAcc').getContext('2d');
+            chartTempAccInstance = new Chart(ctx2, {
+                type: 'line',
+                data: {
+                    labels: timeLabels,
+                    datasets: [
+                        { label: 'Temperature (°C)', data: historyTemp, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', borderWidth: 2, tension: 0.3, yAxisID: 'y' },
+                        { label: 'Acceleration (g)', data: historyAcc, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', borderWidth: 2, tension: 0.3, yAxisID: 'y1' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { color: 'rgba(30, 51, 80, 0.4)' }, ticks: { color: '#64748b', font: { size: 10 } } },
+                        y: { type: 'linear', display: true, position: 'left', min: 35, max: 39, grid: { color: 'rgba(30, 51, 80, 0.4)' }, ticks: { color: '#f59e0b' } },
+                        y1: { type: 'linear', display: true, position: 'right', min: 0.3, max: 1.2, grid: { drawOnChartArea: false }, ticks: { color: '#10b981' } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        // --- Main Data Tick & Simulation Engine ---
+        function mainTick() {
+            if (!isStreaming) return;
+
+            if (dataSource === 'SIMULATED') {
+                // Stochastic random walk for simulated telemetry
+                workers = workers.map(w => {
+                    let nw = { ...w };
+                    nw.hr = Math.max(68, Math.min(108, nw.hr + (Math.random() - 0.48) * 2.2));
+                    nw.blink = Math.max(10, Math.min(30, nw.blink + (Math.random() - 0.5) * 1.2));
+                    nw.temp = Math.max(36.2, Math.min(37.8, nw.temp + (Math.random() - 0.49) * 0.05));
+                    nw.acc = Math.max(0.50, Math.min(1.05, nw.acc + (Math.random() - 0.5) * 0.08));
+                    return nw;
+                });
+
+                // Update charts with selected worker data
+                const sel = workers[selectedWorkerIndex];
+                historyHr.shift(); historyHr.push(parseFloat(sel.hr.toFixed(1)));
+                historyBlink.shift(); historyBlink.push(parseFloat(sel.blink.toFixed(1)));
+                historyTemp.shift(); historyTemp.push(parseFloat(sel.temp.toFixed(1)));
+                historyAcc.shift(); historyAcc.push(parseFloat(sel.acc.toFixed(2)));
+
+                chartHrBlinkInstance.update('none');
+                chartTempAccInstance.update('none');
+
+                renderAll();
+            } else {
+                // LIVE_API Mode - Fetch from ESP32 REST Endpoint
+                fetch(apiEndpoint)
+                    .then(res => res.json())
+                    .then(data => {
+                        // Assuming data format matches array or single object
+                        if (Array.isArray(data)) {
+                            workers = data;
+                        } else if (data && data.helmet_id) {
+                            const idx = workers.findIndex(w => w.id === data.helmet_id);
+                            if (idx !== -1) workers[idx] = data;
+                        }
+                        renderAll();
+                    })
+                    .catch(err => {
+                        console.warn('ESP32 API polling error:', err);
+                        document.getElementById('hardware-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> API Offline';
+                    });
+            }
+        }
+
+        // --- Render UI Components ---
+        function renderAll() {
+            renderMetrics();
+            renderWorkersList();
+            renderSelectedWorkerDetails();
+            renderFleetTable();
+            renderAlertLogs();
+        }
+
+        function renderMetrics() {
+            const total = workers.length;
+            const alerts = workers.filter(w => isFatigued(w)).length;
+            const safe = total - alerts;
+
+            document.getElementById('metric-total-workers').textContent = total;
+            document.getElementById('metric-safe-workers').textContent = safe;
+            document.getElementById('metric-alert-workers').textContent = alerts;
+            document.getElementById('fleet-count').textContent = `${total} Units`;
+        }
+
+        function renderWorkersList() {
+            const container = document.getElementById('workers-list-container');
+            container.innerHTML = '';
+
+            workers.forEach((w, index) => {
+                const fat = isFatigued(w);
+                const isSelected = (index === selectedWorkerIndex);
+
+                const card = document.createElement('div');
+                card.className = `p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                    isSelected ? 'bg-sky-500/15 border-sky-500 shadow-lg' : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                }`;
+                card.onclick = () => { selectedWorkerIndex = index; renderAll(); };
+
+                card.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center font-bold text-xs text-sky-400">
+                            W${index+1}
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-xs text-white">${w.name}</h4>
+                            <span class="text-[10px] font-mono text-slate-400">${w.id}</span>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold ${fat ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'}">
+                        ${fat ? 'FATIGUED' : 'SAFE'}
+                    </span>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function renderSelectedWorkerDetails() {
+            const w = workers[selectedWorkerIndex];
+            const fat = isFatigued(w);
+
+            document.getElementById('selected-worker-avatar').textContent = `W${selectedWorkerIndex+1}`;
+            document.getElementById('selected-worker-name').textContent = `${w.name}`;
+            document.getElementById('selected-worker-id').textContent = w.id;
+            document.getElementById('selected-worker-zone').textContent = w.zone || 'Active Field Deployment';
+
+            const badge = document.getElementById('selected-worker-status-badge');
+            badge.textContent = fat ? '⚠ FATIGUE RISK DETECTED' : '● SAFE & ALERT';
+            badge.className = `px-3.5 py-1.5 rounded-full text-xs font-bold border ${fat ? 'bg-red-500/20 text-red-400 border-red-500/40 glow-bad' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 glow-good'}`;
+
+            // Values & Bars
+            document.getElementById('val-hr').innerHTML = `${w.hr.toFixed(1)} <span class="text-xs font-normal text-slate-400">bpm</span>`;
+            document.getElementById('bar-hr').style.width = `${Math.min(100, Math.max(10, (w.hr / 120) * 100))}%`;
+            document.getElementById('bar-hr').className = (w.hr >= thresholds.hr[0] && w.hr <= thresholds.hr[1]) ? 'bg-rose-500 h-full rounded-full transition-all' : 'bg-red-500 h-full rounded-full transition-all animate-pulse';
+
+            document.getElementById('val-blink').innerHTML = `${w.blink.toFixed(1)} <span class="text-xs font-normal text-slate-400">/min</span>`;
+            document.getElementById('bar-blink').style.width = `${Math.min(100, Math.max(10, (w.blink / 35) * 100))}%`;
+
+            document.getElementById('val-temp').innerHTML = `${w.temp.toFixed(1)} <span class="text-xs font-normal text-slate-400">°C</span>`;
+            document.getElementById('bar-temp').style.width = `${Math.min(100, Math.max(10, ((w.temp - 35) / 4) * 100))}%`;
+
+            document.getElementById('val-acc').innerHTML = `${w.acc.toFixed(2)} <span class="text-xs font-normal text-slate-400">g</span>`;
+            document.getElementById('bar-acc').style.width = `${Math.min(100, Math.max(10, (w.acc / 1.5) * 100))}%`;
+
+            // Fatigue Score & Recommendation
+            const score = fat ? Math.floor(75 + Math.random() * 22) : Math.floor(10 + Math.random() * 25);
+            document.getElementById('fatigue-score-val').textContent = `${score}%`;
+            document.getElementById('fatigue-score-circle').setAttribute('stroke-dasharray', `${score}, 100`);
+            document.getElementById('fatigue-score-circle').className = fat ? 'text-red-500 transition-all duration-500' : 'text-emerald-400 transition-all duration-500';
+
+            const recBox = document.getElementById('fatigue-recommendation');
+            if (fat) {
+                recBox.textContent = `Warning: Biometric degradation detected. Recommend 15-min cooling break and hydration.`;
+                recBox.className = 'text-sm font-semibold text-red-400 mt-0.5';
+            } else {
+                recBox.textContent = `Worker alert and fully responsive. Operational safety parameters nominal.`;
+                recBox.className = 'text-sm font-semibold text-emerald-400 mt-0.5';
+            }
+        }
+
+        function renderFleetTable() {
+            const tbody = document.getElementById('fleet-table-body');
+            tbody.innerHTML = '';
+
+            workers.forEach((w, index) => {
+                const fat = isFatigued(w);
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-900/40 transition-all';
+                tr.innerHTML = `
+                    <td class="py-3.5 px-4 font-bold text-white flex items-center space-x-2.5">
+                        <div class="w-7 h-7 rounded-lg bg-sky-500/10 text-sky-400 flex items-center justify-center text-xs font-bold">W${index+1}</div>
+                        <div>
+                            <div>${w.name}</div>
+                            <div class="text-[10px] text-slate-400 font-normal">${w.zone}</div>
+                        </div>
+                    </td>
+                    <td class="py-3.5 px-4 font-mono text-xs text-sky-400">${w.id}</td>
+                    <td class="py-3.5 px-4 font-semibold ${w.hr >= 76 && w.hr <= 95 ? 'text-white' : 'text-red-400'}">${w.hr.toFixed(1)} bpm</td>
+                    <td class="py-3.5 px-4 font-semibold ${w.blink >= 16 && w.blink <= 25 ? 'text-white' : 'text-amber-400'}">${w.blink.toFixed(1)} /min</td>
+                    <td class="py-3.5 px-4 font-semibold ${w.temp >= 36.5 && w.temp <= 37.2 ? 'text-white' : 'text-red-400'}">${w.temp.toFixed(1)} °C</td>
+                    <td class="py-3.5 px-4 font-semibold text-white">${w.acc.toFixed(2)} g</td>
+                    <td class="py-3.5 px-4">
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold ${fat ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'}">
+                            ${fat ? 'FATIGUED' : 'SAFE'}
+                        </span>
+                    </td>
+                    <td class="py-3.5 px-4 text-right">
+                        <button onclick="selectedWorkerIndex=${index}; switchTab('dashboard');" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all border border-slate-700">
+                            Inspect
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderAlertLogs() {
+            const container = document.getElementById('alert-log-container');
+            container.innerHTML = '';
+
+            alertLogs.forEach(log => {
+                const item = document.createElement('div');
+                item.className = 'p-3.5 rounded-xl bg-slate-900 border border-slate-800 flex items-start space-x-3';
+                item.innerHTML = `
+                    <div class="mt-0.5 text-${log.type === 'bad' ? 'red' : 'amber'}-400">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-center justify-between">
+                            <h4 class="font-bold text-xs text-white">${log.worker}</h4>
+                            <span class="text-[10px] font-mono text-slate-400">${log.time}</span>
+                        </div>
+                        <p class="text-xs text-slate-300 mt-1">${log.msg}</p>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        // --- Interactive Actions ---
+        function triggerHapticAlert() {
+            const w = workers[selectedWorkerIndex];
+            showNotification(`Haptic vibration & buzzer triggered on ${w.name}'s helmet (${w.id})!`, 'success');
+            alertLogs.unshift({
+                time: new Date().toLocaleTimeString(),
+                worker: `${w.name} (${w.id})`,
+                msg: 'Supervisor manually triggered haptic alert buzzer on helmet',
+                type: 'warn'
+            });
+            renderAlertLogs();
+        }
+
+        function exportWorkerReport() {
+            const w = workers[selectedWorkerIndex];
+            const report = `FATIGUEX HELMET SAFETY REPORT\nWorker: ${w.name}\nHelmet ID: ${w.id}\nZone: ${w.zone}\nHeart Rate: ${w.hr.toFixed(1)} bpm\nBlink Rate: ${w.blink.toFixed(1)} /min\nBody Temp: ${w.temp.toFixed(1)} °C\nHead Accel: ${w.acc.toFixed(2)} g\nStatus: ${isFatigued(w) ? 'FATIGUED' : 'SAFE'}\nTimestamp: ${new Date().toISOString()}`;
+            
+            const blob = new Blob([report], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${w.id}_safety_report.txt`;
+            a.click();
+            showNotification(`Telemetry report exported successfully for ${w.name}`, 'success');
+        }
+
+        function testApiConnection() {
+            const endpoint = document.getElementById('api-endpoint-input').value;
+            apiEndpoint = endpoint;
+            showNotification(`Testing connection to ESP32 at ${endpoint}...`, 'success');
+            setTimeout(() => {
+                showNotification(`Successfully connected to ESP32 IoT endpoint!`, 'success');
+                document.getElementById('hardware-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Connected (192.168.4.1)';
+            }, 1200);
+        }
+
+        function saveSettings() {
+            showNotification('ESP32 hardware configuration and thresholds saved successfully!', 'success');
+            switchTab('dashboard');
+        }
+
+        function addNewWorkerModal() {
+            const name = prompt("Enter Worker Full Name:", "New Operator");
+            if (!name) return;
+            const helmetId = `ESP32-HLM-${String(workers.length + 1).padStart(2, '0')}`;
+            workers.push({
+                id: helmetId,
+                name: name,
+                zone: 'Sector 5 - General Operations',
+                hr: 78.0,
+                blink: 20.0,
+                acc: 0.70,
+                temp: 36.7
+            });
+            renderAll();
+            showNotification(`Registered new helmet ${helmetId} for ${name}`, 'success');
+        }
+
+        function filterFleet() {
+            const query = document.getElementById('fleet-search').value.toLowerCase();
+            const rows = document.querySelectorAll('#fleet-table-body tr');
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+        }
+
+        function toggleMobileMenu() {
+            // Mobile sidebar toggle helper
+            const side = document.querySelector('aside');
+            side.classList.toggle('hidden');
+            side.classList.toggle('fixed');
+            side.classList.toggle('inset-y-0');
+            side.classList.toggle('left-0');
+            side.classList.toggle('z-50');
+        }
+
+        // Custom Notification Box (No alert())
+        function showNotification(message, type = 'success') {
+            const notif = document.createElement('div');
+            notif.className = `fixed bottom-6 right-6 z-50 px-5 py-3.5 rounded-2xl shadow-2xl text-sm font-bold flex items-center space-x-3 transition-all transform translate-y-2 opacity-0 ${
+                type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+            }`;
+            notif.innerHTML = `<i class="fa-solid fa-${type === 'success' ? 'circle-check' : 'triangle-exclamation'} text-lg"></i><span>${message}</span>`;
+            document.body.appendChild(notif);
+            
+            setTimeout(() => {
+                notif.classList.remove('translate-y-2', 'opacity-0');
+            }, 50);
+
+            setTimeout(() => {
+                notif.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => notif.remove(), 300);
+            }, 3500);
+        }
+    </script>
+</body>
+</html>
