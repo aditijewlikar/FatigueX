@@ -533,7 +533,19 @@
         let chartHrBlinkInstance = null;
         let chartTempAccInstance = null;
 
-        // --- Initialization on Load ---
+        // Cache fatigue scores so the gauge doesn't flicker every tick.
+        // Keyed by workerIndex + fatigue status so it updates on real state changes.
+        const fatigueScoreCache = {};
+
+        function getFatigueScore(index, isFat) {
+            const key = `${index}-${isFat}`;
+            if (!(key in fatigueScoreCache)) {
+                fatigueScoreCache[key] = isFat
+                    ? Math.floor(75 + Math.random() * 22)
+                    : Math.floor(10 + Math.random() * 25);
+            }
+            return fatigueScoreCache[key];
+        }
         window.addEventListener('DOMContentLoaded', () => {
             initCharts();
             renderAll();
@@ -551,19 +563,37 @@
         function setDataSource(mode) {
             dataSource = mode;
             const isSim = (mode === 'SIMULATED');
-            
-            // Update UI buttons
+
+            // Update header toggle buttons
             document.getElementById('btn-mode-sim').className = isSim ? 'px-3 py-1.5 rounded-lg transition-all bg-sky-600 text-white shadow' : 'px-3 py-1.5 rounded-lg transition-all text-slate-400 hover:text-white';
             document.getElementById('btn-mode-api').className = !isSim ? 'px-3 py-1.5 rounded-lg transition-all bg-sky-600 text-white shadow' : 'px-3 py-1.5 rounded-lg transition-all text-slate-400 hover:text-white';
-            
+
+            // Update settings panel buttons
             document.getElementById('settings-btn-sim').className = isSim ? 'p-4 rounded-xl border text-left transition-all bg-sky-600/20 border-sky-500 text-white' : 'p-4 rounded-xl border text-left transition-all bg-slate-900 border-slate-800 text-slate-400 hover:text-white';
             document.getElementById('settings-btn-api').className = !isSim ? 'p-4 rounded-xl border text-left transition-all bg-sky-600/20 border-sky-500 text-white' : 'p-4 rounded-xl border text-left transition-all bg-slate-900 border-slate-800 text-slate-400 hover:text-white';
 
             document.getElementById('api-config-section').classList.toggle('hidden', isSim);
             document.getElementById('sidebar-mode-badge').textContent = isSim ? 'Simulated' : 'Live ESP32 API';
-            document.getElementById('hardware-status').innerHTML = isSim ? 
-                '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Standby' : 
-                '<span class="w-2 h-2 rounded-full bg-sky-400 animate-ping"></span> Polling API';
+            document.getElementById('hardware-status').innerHTML = isSim
+                ? '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Standby'
+                : '<span class="w-2 h-2 rounded-full bg-sky-400 animate-ping"></span> Polling API';
+
+            // Show the STREAMING ACTIVE banner only in LIVE_API mode
+            const liveIndicator = document.getElementById('live-indicator');
+            if (isSim) {
+                liveIndicator.classList.add('hidden');
+            } else {
+                liveIndicator.classList.remove('hidden');
+            }
+
+            // Reset chart history buffers so old data doesn't bleed across modes
+            const sel = workers[selectedWorkerIndex];
+            historyHr    = Array.from({length: maxHistoryPoints}, () => sel.hr);
+            historyBlink = Array.from({length: maxHistoryPoints}, () => sel.blink);
+            historyTemp  = Array.from({length: maxHistoryPoints}, () => sel.temp);
+            historyAcc   = Array.from({length: maxHistoryPoints}, () => sel.acc);
+            if (chartHrBlinkInstance) chartHrBlinkInstance.update('none');
+            if (chartTempAccInstance) chartTempAccInstance.update('none');
 
             showNotification(isSim ? 'Switched to Simulated Telemetry Mode' : 'Switched to Live ESP32 Hardware API Mode', 'success');
         }
@@ -668,22 +698,61 @@
 
                 renderAll();
             } else {
-                // LIVE_API Mode - Fetch from ESP32 REST Endpoint
+                // LIVE_API Mode — fetch from ESP32 REST endpoint
                 fetch(apiEndpoint)
                     .then(res => res.json())
                     .then(data => {
-                        // Assuming data format matches array or single object
+                        // Normalise ESP32 field names to match the internal
+                        // worker object schema used throughout the dashboard.
+                        const normalise = d => ({
+                            id:    d.helmet_id   || d.id,
+                            name:  d.worker_name || d.name || d.helmet_id,
+                            zone:  d.zone        || 'Active Field Deployment',
+                            hr:    parseFloat(d.heart_rate  ?? d.hr)   || 0,
+                            blink: parseFloat(d.blink_rate  ?? d.blink) || 0,
+                            temp:  parseFloat(d.body_temp   ?? d.temp)  || 0,
+                            acc:   parseFloat(d.head_accel  ?? d.acc)   || 0,
+                        });
+
                         if (Array.isArray(data)) {
-                            workers = data;
-                        } else if (data && data.helmet_id) {
-                            const idx = workers.findIndex(w => w.id === data.helmet_id);
-                            if (idx !== -1) workers[idx] = data;
+                            workers = data.map(normalise);
+                        } else if (data && (data.helmet_id || data.id)) {
+                            const norm = normalise(data);
+                            const idx  = workers.findIndex(w => w.id === norm.id);
+                            if (idx !== -1) {
+                                const wasAlert = isFatigued(workers[idx]);
+                                workers[idx] = { ...workers[idx], ...norm };
+                                // Auto-log a new alert entry when alert_active flips on
+                                if (data.alert_active && !wasAlert) {
+                                    alertLogs.unshift({
+                                        time: new Date().toLocaleTimeString(),
+                                        worker: `${norm.name} (${norm.id})`,
+                                        msg: 'ESP32 fatigue alert triggered — 3-of-4 sensor flags exceeded threshold',
+                                        type: 'bad'
+                                    });
+                                }
+                            }
                         }
+
+                        // Feed selected worker's live values into chart history
+                        const sel = workers[selectedWorkerIndex];
+                        if (sel) {
+                            historyHr.shift();    historyHr.push(parseFloat(sel.hr.toFixed(1)));
+                            historyBlink.shift(); historyBlink.push(parseFloat(sel.blink.toFixed(1)));
+                            historyTemp.shift();  historyTemp.push(parseFloat(sel.temp.toFixed(1)));
+                            historyAcc.shift();   historyAcc.push(parseFloat(sel.acc.toFixed(2)));
+                            chartHrBlinkInstance.update('none');
+                            chartTempAccInstance.update('none');
+                        }
+
+                        document.getElementById('hardware-status').innerHTML =
+                            '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Live';
                         renderAll();
                     })
                     .catch(err => {
                         console.warn('ESP32 API polling error:', err);
-                        document.getElementById('hardware-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> API Offline';
+                        document.getElementById('hardware-status').innerHTML =
+                            '<span class="w-2 h-2 rounded-full bg-red-500"></span> API Offline';
                     });
             }
         }
@@ -767,8 +836,8 @@
             document.getElementById('val-acc').innerHTML = `${w.acc.toFixed(2)} <span class="text-xs font-normal text-slate-400">g</span>`;
             document.getElementById('bar-acc').style.width = `${Math.min(100, Math.max(10, (w.acc / 1.5) * 100))}%`;
 
-            // Fatigue Score & Recommendation
-            const score = fat ? Math.floor(75 + Math.random() * 22) : Math.floor(10 + Math.random() * 25);
+            // Fatigue Score & Recommendation — use cached value to avoid flicker
+            const score = getFatigueScore(selectedWorkerIndex, fat);
             document.getElementById('fatigue-score-val').textContent = `${score}%`;
             document.getElementById('fatigue-score-circle').setAttribute('stroke-dasharray', `${score}, 100`);
             document.getElementById('fatigue-score-circle').className = fat ? 'text-red-500 transition-all duration-500' : 'text-emerald-400 transition-all duration-500';
@@ -845,7 +914,21 @@
         // --- Interactive Actions ---
         function triggerHapticAlert() {
             const w = workers[selectedWorkerIndex];
-            showNotification(`Haptic vibration & buzzer triggered on ${w.name}'s helmet (${w.id})!`, 'success');
+
+            if (dataSource === 'LIVE_API') {
+                // Derive base from apiEndpoint regardless of whether it ends with /api/telemetry
+                const baseUrl = apiEndpoint.replace(/\/api\/telemetry\/?$/, '').replace(/\/$/, '');
+                // Send a real buzz command to the physical helmet
+                fetch(`${baseUrl}/api/buzz`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(() => showNotification(`Haptic buzz triggered on ${w.name}'s helmet (${w.id})!`, 'success'))
+                .catch(() => showNotification(`Could not reach helmet ${w.id} — check connection.`, 'error'));
+            } else {
+                showNotification(`Haptic vibration & buzzer triggered on ${w.name}'s helmet (${w.id})!`, 'success');
+            }
+
             alertLogs.unshift({
                 time: new Date().toLocaleTimeString(),
                 worker: `${w.name} (${w.id})`,
@@ -869,13 +952,26 @@
         }
 
         function testApiConnection() {
-            const endpoint = document.getElementById('api-endpoint-input').value;
-            apiEndpoint = endpoint;
+            const endpoint = document.getElementById('api-endpoint-input').value.trim();
             showNotification(`Testing connection to ESP32 at ${endpoint}...`, 'success');
-            setTimeout(() => {
-                showNotification(`Successfully connected to ESP32 IoT endpoint!`, 'success');
-                document.getElementById('hardware-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Connected (192.168.4.1)';
-            }, 1200);
+
+            fetch(endpoint, { signal: AbortSignal.timeout(4000) })
+                .then(res => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    return res.json();
+                })
+                .then(data => {
+                    // Only commit the endpoint once we know it actually works
+                    apiEndpoint = endpoint;
+                    showNotification(`Connected! Helmet: ${data.helmet_id || 'unknown'}`, 'success');
+                    document.getElementById('hardware-status').innerHTML =
+                        `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Connected`;
+                })
+                .catch(err => {
+                    showNotification(`Could not reach ${endpoint} — check IP and firmware.`, 'error');
+                    document.getElementById('hardware-status').innerHTML =
+                        `<span class="w-2 h-2 rounded-full bg-red-500"></span> Unreachable`;
+                });
         }
 
         function saveSettings() {
